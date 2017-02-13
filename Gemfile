@@ -21,3 +21,7 @@ end
 
 gem "naught"
 gem "auth0"
+gem "concurrent-ruby"
+gem "concurrent-ruby-edge"
+
+gem "progress_bar"

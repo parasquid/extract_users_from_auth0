@@ -6,15 +6,23 @@ GEM
       rest-client (~> 1.8.0)
     byebug (9.0.6)
     coderay (1.1.1)
+    concurrent-ruby (1.0.4)
+    concurrent-ruby-edge (0.3.0)
+      concurrent-ruby (= 1.0.4)
     domain_name (0.5.20161129)
       unf (>= 0.0.5, < 1.0.0)
     dotenv (2.2.0)
+    highline (1.7.8)
     http-cookie (1.0.3)
       domain_name (~> 0.5)
     method_source (0.8.2)
     mime-types (2.99.3)
     naught (1.1.0)
     netrc (0.11.0)
+    options (2.3.2)
+    progress_bar (1.1.0)
+      highline (~> 1.6)
+      options (~> 2.3.0)
     pry (0.10.4)
       coderay (~> 1.1.0)
       method_source (~> 0.8.1)
@@ -36,8 +44,11 @@ PLATFORMS
 DEPENDENCIES
   auth0
   byebug
+  concurrent-ruby
+  concurrent-ruby-edge
   dotenv
   naught
+  progress_bar
   pry
   rails-assets-fontawesome (~> 4.3.0)!
   rails-assets-tether (>= 1.1.0)!
