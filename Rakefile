@@ -74,8 +74,12 @@ task :update_maropost_with_auth0_id => [:dotenv] do
   extractor = Extractor.new(queue, logger: LOGGER)
   extractor.get_users_from_api
 
-  users_in_dnm = []
-  not_found = []
+  users_in_dnm = Channel.new(capacity: 16)
+  not_found = Channel.new(capacity: 16)
+
+  users_in_dnm_done = Channel.new(capacity: 1)
+  not_found_done = Channel.new(capacity: 1)
+  workers_done = Channel.new(capacity: 1)
 
   LOGGER.debug "starting the updater channel"
   maropost_client = MaropostApi::Client.new(
@@ -83,36 +87,55 @@ task :update_maropost_with_auth0_id => [:dotenv] do
     account_number: ENV["ACCOUNT_NUMBER"]
   )
 
-  extractor.total_records.times do |counter|
-    row = ~queue
-    email = row.first
-    Channel.go {
-      begin
-        maropost_client.contacts.find_by_email(email: email) # trigger not found
-        if maropost_client.global_unsubscribes.find_by_email(email: email)
-          users_in_dnm << row
-          LOGGER.warn "#{email} in dnm"
+  Channel.go {
+    extractor.total_records.times do |counter|
+      row = ~queue
+      email = row.first
+      Channel.go {
+        begin
+          maropost_client.contacts.find_by_email(email: email) # trigger not found
+          if maropost_client.global_unsubscribes.find_by_email(email: email)
+            users_in_dnm << row
+            LOGGER.warn "#{email} in dnm"
+          end
+        rescue MaropostApi::NotFound => ex
+          LOGGER.warn "#{email} not found"
+          not_found << row
+        rescue StandardError => ex
+          LOGGER.warn ex
         end
-      rescue MaropostApi::NotFound => ex
-        LOGGER.warn "#{email} not found"
-        not_found << row
-      rescue StandardError => ex
-        LOGGER.warn ex
+        worker_pool << "#{counter + 1} of #{extractor.total_records} #{email} processed"
+      }
+    end
+  }
+
+  Channel.go {
+    not_found.each do |row| LOGGER.debug not_found_sheet.append(row); end
+    not_found_done << "not_found done!"
+  }
+
+  Channel.go {
+    users_in_dnm.each do |row| LOGGER.debug users_in_dnm_sheet.append(row); end
+    users_in_dnm_done << "users_in_dnm done!"
+  }
+
+  Channel.go {
+    counter = 0
+    worker_pool.each do |pool|
+      counter += 1
+      LOGGER.debug "#{pool} => #{counter} / extractor.total_records"
+      if counter >= extractor.total_records
+        worker_pool.close
+        not_found.close
+        users_in_dnm.close
+        workers_done << "wokers done!"
       end
-      worker_pool << "#{counter + 1} of #{extractor.total_records} #{email} processed"
-    }
-  end
+    end
+  }
 
-  # drain all workers
-  counter = 0
-  worker_pool.each do |pool|
-    LOGGER.debug pool
-    counter += 1
-    worker_pool.close if counter >= extractor.total_records
-  end
-
-  not_found.each do |row| LOGGER.debug not_found_sheet.append(row); end
-  users_in_dnm.each do |row| LOGGER.debug users_in_dnm_sheet.append(row); end
+  LOGGER.debug ~workers_done
+  LOGGER.debug ~not_found_done
+  LOGGER.debug ~users_in_dnm_done
 
 end
 

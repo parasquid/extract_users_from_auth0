@@ -15,7 +15,7 @@ class Extractor
       include_totals: true
     )["total"]
 
-    @total_records = 10
+    @total_records = 1000
     @total_pages = (@total_records / PER_PAGE).floor + 1
   end
 
@@ -35,7 +35,7 @@ class Extractor
           @logger.warn ex
         end
       end
-      @worker_pool << "done with page #{page} of #{@total_pages}"
+      @worker_pool << "done with page #{page + 1} of #{@total_pages}"
     end
   end
 
