@@ -34,11 +34,10 @@ task :write_users_to_csv => [:dotenv] do
       CSV.open("accounts.csv", "wb") do |csv|
         csv << ["email", "email_verified", "given_name", "family_name"]
         LOGGER.debug "reading the queue #{extractor.total_records} total records"
-        while counter < extractor.total_records do
+        extractor.total_records.times do |counter|
           row = ~queue
           csv <<  row
           LOGGER.debug "#{counter} of #{extractor.total_records} processed"
-          counter += 1
         end
       end
       done << "all done!"
@@ -63,14 +62,35 @@ task :update_maropost_with_auth0_id => [:dotenv] do
 
   extractor.get_users_from_api
 
-  Channel.go {
-    begin
-      LOGGER.debug "starting writer channel"
-      extractor.update_maropost_with_auth0_id
-    rescue StandardError => ex
-      LOGGER.warn ex
-    end
-  }
+  worker_pool = Concurrent::Channel.new(capacity: 16)
 
-  LOGGER.debug ~done
+  LOGGER.debug "starting the updater channel"
+  extractor.total_records.times do |counter|
+    row = ~queue
+    email = row.first
+    client = MaropostApi::Client.new(
+      auth_token: ENV["AUTH_TOKEN"],
+      account_number: ENV["ACCOUNT_NUMBER"]
+    )
+
+    Channel.go {
+      begin
+        client.contacts.find_by_email(email: email)
+      rescue MaropostApi::NotFound => ex
+        LOGGER.warn email
+      end
+      worker_pool << "#{counter + 1} of #{extractor.total_records} #{email} processed"
+    }
+
+  end
+
+  # drain all workers before quitting
+  extractor.total_records.times do
+    LOGGER.debug ~worker_pool # blocks when there's no worker in the queue
+  end
+end
+
+desc "Open a pry session preloaded with this library"
+task :console do
+  pry
 end

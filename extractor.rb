@@ -31,12 +31,12 @@ class Extractor
             sort: "created_at:1",
             include_totals: true
           )["users"]
-          transform_users_json_to_hash(users, @queue, @worker_pool)
+          transform_users_json_to_array(users, @queue, @worker_pool)
         rescue StandardError => ex
           @logger.warn ex
         end
       end
-      @worker_pool << "done with this worker"
+      @worker_pool << "done with page #{page} of #{@total_pages}"
     end
   end
 
@@ -70,17 +70,18 @@ class Extractor
   end
 
   # worker to parse the api response and spit out something usable
-  def transform_users_json_to_hash(users, queue, pool)
+  def transform_users_json_to_array(users, queue, pool)
     users.each do |user|
       Channel.go do
+        ident = user["identities"].select { |identity|
+          identity["provider"] == "auth0"
+        }.first
         row = [
           user["email"],
           user["email_verified"],
           user["given_name"],
           user["family_name"],
-          user["identities"].select { |identity|
-            identity["provider"] == "auth0"
-          }.first["user_id"]
+          (ident["user_id"] if ident)
         ]
         queue << row
       end
