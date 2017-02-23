@@ -9,12 +9,11 @@ require "concurrent-edge"
 require "csv"
 require "json"
 require "jwt"
-require "progress_bar"
 
 desc "extract all users from auth0"
 task extract_users: :dotenv do
   LOGGER = Logger.new(STDOUT)
-  LOGGER.level = Logger::WARN
+  LOGGER.level = Logger::DEBUG
 
   url = URI("https://#{ENV['SUBDOMAIN']}.auth0.com/oauth/token")
 
@@ -47,58 +46,77 @@ task extract_users: :dotenv do
     include_totals: true
   )["total"]
 
+  total_records = 1000
   PER_PAGE = 100
   total_pages = (total_records / PER_PAGE).floor + 1
 
   Channel = Concurrent::Channel
   queue = Channel.new
   done = Channel.new(capacity: 1)
-  worker_pool = Channel.new(capacity: 4)
+  worker_pool = Channel.new(capacity: 8)
 
-  def worker(users, queue, pool, page)
-    users.each do |user|
-      Channel.go do
-        row = [
-          user["email"],
-          user["email_verified"],
-          user["given_name"],
-          user["family_name"]
-        ]
-        queue << row
-      end
-    end
-    LOGGER.debug ~pool
-  end
-
-  Channel.go {
-    bar = ProgressBar.new(total_records)
-    CSV.open("accounts.csv", "wb") do |csv|
-      csv << ["email", "email_verified", "given_name", "family_name"]
-      counter = 0
-      while counter < total_records do
-        row = ~queue
-        csv <<  row
-        counter += 1
-        bar.increment!
-      end
-    end
-    done << "all done!"
-  }
-
+  # get users from the API and push it to a worker
   total_pages.times do |page|
     Channel.go do
-      users = auth0.get_users(
-        per_page: PER_PAGE,
-        page: page,
-        sort: "created_at:1",
-        include_totals: true
-      )["users"]
-      worker(users, queue, worker_pool, page)
+      begin
+        users = auth0.get_users(
+          per_page: PER_PAGE,
+          page: page,
+          sort: "created_at:1",
+          include_totals: true
+        )["users"]
+        transform_users_json_to_hash(users, queue, worker_pool)
+      rescue StandardError => ex
+        LOGGER.warn ex
+      end
     end
     worker_pool << "done with this worker"
   end
+
+  # write each user to a csv
+  Channel.go {
+    begin
+      LOGGER.debug "starting writer channel"
+      write_user_row_to_csv(queue, total_records, done)
+    rescue StandardError => ex
+      LOGGER.warn ex
+    end
+  }
 
   LOGGER.debug ~done
 
 end
 
+# worker to parse the api response and spit out something usable
+def transform_users_json_to_hash(users, queue, pool)
+  users.each do |user|
+    Channel.go do
+      row = [
+        user["email"],
+        user["email_verified"],
+        user["given_name"],
+        user["family_name"],
+        user["identities"].select { |identity|
+          identity["provider"] == "auth0"
+        }.first["user_id"]
+      ]
+      queue << row
+    end
+  end
+  LOGGER.debug ~pool
+end
+
+def write_user_row_to_csv(users_queue, total_records, done_queue)
+  LOGGER.debug "opening the csv for writing"
+  CSV.open("accounts.csv", "wb") do |csv|
+    csv << ["email", "email_verified", "given_name", "family_name"]
+    counter = 0
+    LOGGER.debug "reading the queue #{total_records} total records"
+    while counter < total_records do
+      row = ~users_queue
+      csv <<  row
+      counter += 1
+    end
+  end
+  done_queue << "all done!"
+end
