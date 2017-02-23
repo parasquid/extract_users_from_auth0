@@ -40,28 +40,6 @@ class Extractor
     end
   end
 
-  # write each user to a csv
-  def write_user_row_to_csv
-    @logger.debug "opening the csv for writing"
-    counter = 0
-    begin
-      CSV.open("accounts.csv", "wb") do |csv|
-        csv << ["email", "email_verified", "given_name", "family_name"]
-        @logger.debug "reading the queue #{total_records} total records"
-        while counter < @total_records do
-          row = ~@queue
-          csv <<  row
-          @logger.debug "#{counter} of #{@total_records} processed"
-          counter += 1
-        end
-      end
-    rescue StandardError => ex
-      @logger.warn ex
-    end
-
-    @done << "all done!"
-  end
-
   private
 
   def init_auth0_client
