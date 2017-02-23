@@ -25,4 +25,4 @@ gem "concurrent-ruby"
 gem "concurrent-ruby-edge"
 gem "jwt"
 
-gem "progress_bar"
+gem "maropost_api"

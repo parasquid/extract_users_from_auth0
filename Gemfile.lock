@@ -12,18 +12,20 @@ GEM
     domain_name (0.5.20161129)
       unf (>= 0.0.5, < 1.0.0)
     dotenv (2.2.0)
-    highline (1.7.8)
+    hashie (3.5.4)
     http-cookie (1.0.3)
       domain_name (~> 0.5)
+    httparty (0.14.0)
+      multi_xml (>= 0.5.2)
     jwt (1.5.6)
+    maropost_api (0.4.0)
+      hashie
+      httparty
     method_source (0.8.2)
     mime-types (2.99.3)
+    multi_xml (0.6.0)
     naught (1.1.0)
     netrc (0.11.0)
-    options (2.3.2)
-    progress_bar (1.1.0)
-      highline (~> 1.6)
-      options (~> 2.3.0)
     pry (0.10.4)
       coderay (~> 1.1.0)
       method_source (~> 0.8.1)
@@ -49,8 +51,8 @@ DEPENDENCIES
   concurrent-ruby-edge
   dotenv
   jwt
+  maropost_api
   naught
-  progress_bar
   pry
   rails-assets-fontawesome (~> 4.3.0)!
   rails-assets-tether (>= 1.1.0)!
