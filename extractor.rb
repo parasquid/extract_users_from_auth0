@@ -3,9 +3,8 @@ class Extractor
 
   attr_reader :total_records
 
-  def initialize(queue_channel, done_channel, logger: Logger.new(STDOUT))
+  def initialize(queue_channel, logger: Logger.new(STDOUT))
     @queue = queue_channel
-    @done = done_channel
     @logger = logger
 
     @worker_pool = Concurrent::Channel.new(capacity: 8)
@@ -16,7 +15,7 @@ class Extractor
       include_totals: true
     )["total"]
 
-    @total_records = 1000
+    @total_records = 10
     @total_pages = (@total_records / PER_PAGE).floor + 1
   end
 

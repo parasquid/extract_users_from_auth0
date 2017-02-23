@@ -26,3 +26,4 @@ gem "concurrent-ruby-edge"
 gem "jwt"
 
 gem "maropost_api"
+gem "g_sheets"
