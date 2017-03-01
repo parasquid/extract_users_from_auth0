@@ -13,7 +13,7 @@ GEM
       concurrent-ruby (= 1.0.4)
     declarative (0.0.9)
     declarative-option (0.1.0)
-    domain_name (0.5.20161129)
+    domain_name (0.5.20170223)
       unf (>= 0.0.5, < 1.0.0)
     dotenv (2.2.0)
     faraday (0.11.0)
@@ -51,7 +51,7 @@ GEM
     logging (2.1.0)
       little-plugger (~> 1.1)
       multi_json (~> 1.10)
-    maropost_api (0.4.0)
+    maropost_api (0.5.0)
       hashie
       httparty
     memoist (0.15.0)

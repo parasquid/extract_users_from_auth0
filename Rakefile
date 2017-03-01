@@ -13,13 +13,12 @@ require "maropost_api"
 require "g_sheets"
 require_relative "extractor"
 
+LOGGER = Logger.new(STDOUT)
+LOGGER.level = Logger::DEBUG
+Channel = Concurrent::Channel
 
 desc "write users to csv"
 task :write_users_to_csv => [:dotenv] do
-  LOGGER = Logger.new(STDOUT)
-  LOGGER.level = Logger::DEBUG
-
-  Channel = Concurrent::Channel
 
   queue = Channel.new
   extractor = Extractor.new(queue, logger: LOGGER)
@@ -50,10 +49,102 @@ task :write_users_to_csv => [:dotenv] do
   LOGGER.debug ~done
 end
 
+def update_maropost_contact_with_auth0_id(contact_id, auth0_id)
+  maropost_client
+    .contacts
+    .update(
+      contact_id: contact_id,
+      params: {
+        contact: {
+          custom_field: {
+            auth0_id: auth0_id
+          }
+        }
+      }
+    )
+end
+
 desc "update maropost with auth0_id"
 task :update_maropost_with_auth0_id => [:dotenv] do
-  LOGGER = Logger.new(STDOUT)
-  LOGGER.level = Logger::DEBUG
+  WORKER_COUNT = 16
+  worker_pool = Channel.new(capacity: WORKER_COUNT)
+
+  queue = Channel.new(capacity: WORKER_COUNT)
+  extractor = Extractor.new(queue, logger: LOGGER)
+  extractor_done = Channel.new(capacity: 1)
+
+  page = Channel.new(capacity: WORKER_COUNT)
+
+  Channel.go {
+    extractor.total_pages.times { |n| page << n }
+  }
+
+  # seed queue with auth0 contacts
+  WORKER_COUNT.times do |worker|
+    Channel.go {
+      begin
+        p = ~page
+        extractor.get_users_from_api(page: p)
+        if (p + 1) >= extractor.total_pages
+          queue << false
+          extractor_done << "extractor is done!"
+        end
+      rescue StandardError => ex
+        LOGGER.warn ex
+      end # begin
+    }
+  end
+
+  maropost_client = MaropostApi::Client.new(
+    auth_token: ENV["AUTH_TOKEN"],
+    account_number: ENV["ACCOUNT_NUMBER"]
+  )
+
+  maropost_done = Channel.new(capacity: 1)
+  not_found_done = Channel.new(capacity: 1)
+  users_in_dnm_done = Channel.new(capacity: 1)
+
+  users_in_dnm = Channel.new(capacity: WORKER_COUNT)
+  not_found = Channel.new(capacity: WORKER_COUNT)
+
+  done = Channel.new(capacity: 1)
+
+  WORKER_COUNT.times do |worker|
+    Channel.go {
+      LOGGER.debug "worker #{worker} goroutine running"
+      queue.each do |row|
+        if row == false
+          not_found << false
+          users_in_dnm << false
+          maropost_done << "reached the end of the queue!"
+        else
+          begin
+            LOGGER.debug "#{row} via worker #{worker}"
+            email = row[0]
+            auth0_id = row[4]
+
+            contact = maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
+
+            # update_maropost_contact_with_auth0_id(contact["id"], auth0_id)
+            LOGGER.debug "updated #{email}(#{contact['id']}) with auth0_id #{auth0_id}"
+
+            dnm = maropost_client.global_unsubscribes.find_by_email(email: email)
+            if !dnm.has_key?("status")
+              users_in_dnm << row.push(contact["id"])
+              LOGGER.warn "#{email} in dnm"
+            end
+
+          rescue MaropostApi::NotFound => ex
+            LOGGER.warn "#{email} not found"
+            not_found << row
+
+          rescue StandardError => ex
+            LOGGER.warn ex
+          end # begin
+        end # if
+      end # queue
+    }
+  end
 
   CLIENT_ID = ENV["GOOGLE_CLIENT_ID"]; CLIENT_SECRET = ENV["GOOGLE_CLIENT_SECRET"]
   authenticator = GSheets::Oauth::Offline.new(CLIENT_ID, CLIENT_SECRET)
@@ -67,75 +158,49 @@ task :update_maropost_with_auth0_id => [:dotenv] do
   not_found_sheet = ss.sheets[0]
   users_in_dnm_sheet = ss.sheets[1]
 
-  Channel = Concurrent::Channel
-  queue = Channel.new
-  worker_pool = Channel.new(capacity: 16)
-
-  extractor = Extractor.new(queue, logger: LOGGER)
-  extractor.get_users_from_api
-
-  users_in_dnm = Channel.new(capacity: 16)
-  not_found = Channel.new(capacity: 16)
-
-  users_in_dnm_done = Channel.new(capacity: 1)
-  not_found_done = Channel.new(capacity: 1)
-  workers_done = Channel.new(capacity: 1)
-
-  LOGGER.debug "starting the updater channel"
-  maropost_client = MaropostApi::Client.new(
-    auth_token: ENV["AUTH_TOKEN"],
-    account_number: ENV["ACCOUNT_NUMBER"]
-  )
-
   Channel.go {
-    extractor.total_records.times do |counter|
-      row = ~queue
-      email = row.first
-      Channel.go {
-        begin
-          maropost_client.contacts.find_by_email(email: email) # trigger not found
-          if maropost_client.global_unsubscribes.find_by_email(email: email)
-            users_in_dnm << row
-            LOGGER.warn "#{email} in dnm"
-          end
-        rescue MaropostApi::NotFound => ex
-          LOGGER.warn "#{email} not found"
-          not_found << row
-        rescue StandardError => ex
-          LOGGER.warn ex
+    not_found.each do |row|
+      begin
+        if row == false
+          not_found.close
+          LOGGER.debug "we're done here"
+        else
+          LOGGER.info not_found_sheet.append(row)
+          LOGGER.info "#{row} added to google sheets not found"
         end
-        worker_pool << "#{counter + 1} of #{extractor.total_records} #{email} processed"
-      }
+      rescue StandardError => ex
+        LOGGER.warn ex
+      end # begin
     end
+    not_found_done << "not_found goroutine done!"
   }
 
   Channel.go {
-    not_found.each do |row| LOGGER.debug not_found_sheet.append(row); end
-    not_found_done << "not_found done!"
-  }
-
-  Channel.go {
-    users_in_dnm.each do |row| LOGGER.debug users_in_dnm_sheet.append(row); end
-    users_in_dnm_done << "users_in_dnm done!"
-  }
-
-  Channel.go {
-    counter = 0
-    worker_pool.each do |pool|
-      counter += 1
-      LOGGER.debug "#{pool} => #{counter} / extractor.total_records"
-      if counter >= extractor.total_records
-        worker_pool.close
-        not_found.close
-        users_in_dnm.close
-        workers_done << "wokers done!"
-      end
+    users_in_dnm.each do |row|
+      begin
+        if row == false
+          users_in_dnm.close
+          LOGGER.debug "we're done here"
+        else
+          LOGGER.info users_in_dnm_sheet.append(row)
+          LOGGER.info "#{row} added to google sheets do not mail"
+        end
+      rescue StandardError => ex
+        LOGGER.warn ex
+      end # begin
     end
+    users_in_dnm_done << "users_in_dnm goroutine done!"
   }
 
-  LOGGER.debug ~workers_done
-  LOGGER.debug ~not_found_done
-  LOGGER.debug ~users_in_dnm_done
+  Channel.go {
+    puts ~extractor_done
+    puts ~maropost_done
+    puts ~users_in_dnm_done
+    puts ~not_found_done
+    done << "all done!"
+  }
+
+  puts ~done
 
 end
 

@@ -2,12 +2,12 @@ class Extractor
   PER_PAGE = 100
 
   attr_reader :total_records
+  attr_reader :total_pages
 
-  def initialize(queue_channel, logger: Logger.new(STDOUT))
-    @queue = queue_channel
+  def initialize(queue, logger: Logger.new(STDOUT))
     @logger = logger
+    @queue = queue || []
 
-    @worker_pool = Concurrent::Channel.new(capacity: 8)
     @auth0 = init_auth0_client
     @total_records = @auth0.get_users(
       per_page: 1,
@@ -15,27 +15,23 @@ class Extractor
       include_totals: true
     )["total"]
 
-    @total_records = 1000
+    @total_records = 10
     @total_pages = (@total_records / PER_PAGE).floor + 1
   end
 
-  # get users from the API and push it to a worker
-  def get_users_from_api
-    @total_pages.times do |page|
-      Channel.go do
-        begin
-          users = @auth0.get_users(
-            per_page: PER_PAGE,
-            page: page,
-            sort: "created_at:1",
-            include_totals: true
-          )["users"]
-          transform_users_json_to_array(users, @queue, @worker_pool)
-        rescue StandardError => ex
-          @logger.warn ex
-        end
-      end
-      @worker_pool << "done with page #{page + 1} of #{@total_pages}"
+  # get users from the API and push it to the queue
+  def get_users_from_api(page: 0)
+    LOGGER.info "extractor processing page #{page + 1} of #{@total_pages}"
+    begin
+      users = @auth0.get_users(
+        per_page: @total_records < PER_PAGE ? @total_records : PER_PAGE,
+        page: page,
+        sort: "created_at:1",
+        include_totals: true
+      )["users"]
+      transform_users_json_to_array(users, @queue)
+    rescue StandardError => ex
+      @logger.warn ex
     end
   end
 
@@ -69,9 +65,9 @@ class Extractor
   end
 
   # worker to parse the api response and spit out something usable
-  def transform_users_json_to_array(users, queue, pool)
+  def transform_users_json_to_array(users, queue)
     users.each do |user|
-      Channel.go do
+      begin
         ident = user["identities"].select { |identity|
           identity["provider"] == "auth0"
         }.first
@@ -83,9 +79,10 @@ class Extractor
           (ident["user_id"] if ident)
         ]
         queue << row
+      rescue StandardError => ex
+        @logger.warn ex
       end
     end
-    @logger.debug ~pool
   end
 
 end
