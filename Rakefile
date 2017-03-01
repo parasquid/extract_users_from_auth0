@@ -13,6 +13,12 @@ require "maropost_api"
 require "g_sheets"
 require_relative "extractor"
 
+class String
+  def munged
+    self.gsub(/(.).*@(.).*\.(.*)/, "\\1*****@\\2*****.\\3")
+  end
+end
+
 LOGGER = Logger.new(STDOUT)
 LOGGER.level = Logger::DEBUG
 Channel = Concurrent::Channel
@@ -69,7 +75,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
   WORKER_COUNT = 16
   worker_pool = Channel.new(capacity: WORKER_COUNT)
 
-  queue = Channel.new(capacity: WORKER_COUNT)
+  queue = Channel.new(capacity: WORKER_COUNT ** 2)
   extractor = Extractor.new(queue, logger: LOGGER)
   extractor_done = Channel.new(capacity: 1)
 
@@ -77,21 +83,25 @@ task :update_maropost_with_auth0_id => [:dotenv] do
 
   Channel.go {
     extractor.total_pages.times { |n| page << n }
+    page << false
   }
 
   # seed queue with auth0 contacts
   WORKER_COUNT.times do |worker|
     Channel.go {
-      begin
-        p = ~page
-        extractor.get_users_from_api(page: p)
-        if (p + 1) >= extractor.total_pages
-          queue << false
-          extractor_done << "extractor is done!"
-        end
-      rescue StandardError => ex
-        LOGGER.warn ex
-      end # begin
+      LOGGER.debug "auth0 worker #{worker} running"
+      page.each do |p|
+        begin
+          if p == false
+            queue << false
+            extractor_done << "extractor is done!"
+          else
+            extractor.get_users_from_api(page: p)
+          end
+        rescue StandardError => ex
+          LOGGER.warn ex
+      end # each
+     end # begin
     }
   end
 
@@ -111,7 +121,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
 
   WORKER_COUNT.times do |worker|
     Channel.go {
-      LOGGER.debug "worker #{worker} goroutine running"
+      LOGGER.debug "maropost worker #{worker} running"
       queue.each do |row|
         if row == false
           not_found << false
@@ -119,23 +129,23 @@ task :update_maropost_with_auth0_id => [:dotenv] do
           maropost_done << "reached the end of the queue!"
         else
           begin
-            LOGGER.debug "#{row} via worker #{worker}"
             email = row[0]
             auth0_id = row[4]
+            LOGGER.debug "#{email.munged} via maropost worker #{worker}"
 
             contact = maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
 
-            # update_maropost_contact_with_auth0_id(contact["id"], auth0_id)
-            LOGGER.debug "updated #{email}(#{contact['id']}) with auth0_id #{auth0_id}"
+            # # update_maropost_contact_with_auth0_id(contact["id"], auth0_id)
+            LOGGER.debug "updated #{email.munged}(#{contact['id']}) with auth0_id #{auth0_id}"
 
             dnm = maropost_client.global_unsubscribes.find_by_email(email: email)
             if !dnm.has_key?("status")
               users_in_dnm << row.push(contact["id"])
-              LOGGER.warn "#{email} in dnm"
+              LOGGER.warn "#{email.munged} in dnm"
             end
 
           rescue MaropostApi::NotFound => ex
-            LOGGER.warn "#{email} not found"
+            LOGGER.warn "#{email.munged} not found"
             not_found << row
 
           rescue StandardError => ex
@@ -163,10 +173,8 @@ task :update_maropost_with_auth0_id => [:dotenv] do
       begin
         if row == false
           not_found.close
-          LOGGER.debug "we're done here"
         else
-          LOGGER.info not_found_sheet.append(row)
-          LOGGER.info "#{row} added to google sheets not found"
+          LOGGER.info "#{row[0].munged} added to google sheets not found"
         end
       rescue StandardError => ex
         LOGGER.warn ex
@@ -180,10 +188,8 @@ task :update_maropost_with_auth0_id => [:dotenv] do
       begin
         if row == false
           users_in_dnm.close
-          LOGGER.debug "we're done here"
         else
-          LOGGER.info users_in_dnm_sheet.append(row)
-          LOGGER.info "#{row} added to google sheets do not mail"
+          LOGGER.info "#{row[0].munged} added to google sheets do not mail"
         end
       rescue StandardError => ex
         LOGGER.warn ex

@@ -15,8 +15,7 @@ class Extractor
       include_totals: true
     )["total"]
 
-    @total_records = 10
-    @total_pages = (@total_records / PER_PAGE).floor + 1
+    @total_pages = (@total_records / PER_PAGE).floor
   end
 
   # get users from the API and push it to the queue
