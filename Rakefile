@@ -11,6 +11,7 @@ require "json"
 require "jwt"
 require "maropost_api"
 require "g_sheets"
+require "google/apis/drive_v2"
 require_relative "extractor"
 
 class String
@@ -96,6 +97,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
             queue << false
             extractor_done << "extractor is done!"
           else
+            LOGGER.debug "processing page #{p} via auth0 worker #{worker}"
             extractor.get_users_from_api(page: p)
           end
         rescue StandardError => ex
@@ -124,8 +126,6 @@ task :update_maropost_with_auth0_id => [:dotenv] do
       LOGGER.debug "maropost worker #{worker} running"
       queue.each do |row|
         if row == false
-          not_found << false
-          users_in_dnm << false
           maropost_done << "reached the end of the queue!"
         else
           begin
@@ -168,6 +168,13 @@ task :update_maropost_with_auth0_id => [:dotenv] do
   not_found_sheet = ss.sheets[0]
   users_in_dnm_sheet = ss.sheets[1]
 
+  Drive = Google::Apis::DriveV2
+  Drive::DriveService.new.tap do |client|
+    client.request_options.timeout_sec = 1200
+    client.request_options.open_timeout_sec = 1200
+    client.request_options.retries = 5
+  end
+
   Channel.go {
     not_found.each do |row|
       begin
@@ -175,6 +182,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
           not_found.close
         else
           not_found_sheet.append(row)
+          sleep 1 # rate limit
           LOGGER.info "#{row[0].munged} added to google sheets not found"
         end
       rescue StandardError => ex
@@ -191,6 +199,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
           users_in_dnm.close
         else
           users_in_dnm_sheet.append(row)
+          sleep 1 # rate limit
           LOGGER.info "#{row[0].munged} added to google sheets do not mail"
         end
       rescue StandardError => ex
