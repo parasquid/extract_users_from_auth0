@@ -174,6 +174,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
         if row == false
           not_found.close
         else
+          not_found_sheet.append(row)
           LOGGER.info "#{row[0].munged} added to google sheets not found"
         end
       rescue StandardError => ex
@@ -189,6 +190,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
         if row == false
           users_in_dnm.close
         else
+          users_in_dnm_sheet.append(row)
           LOGGER.info "#{row[0].munged} added to google sheets do not mail"
         end
       rescue StandardError => ex
