@@ -21,7 +21,7 @@ class String
 end
 
 LOGGER = Logger.new(STDOUT)
-LOGGER.level = Logger::DEBUG
+LOGGER.level = Logger::INFO
 Channel = Concurrent::Channel
 
 desc "write users to csv"
@@ -54,21 +54,6 @@ task :write_users_to_csv => [:dotenv] do
   }
 
   LOGGER.debug ~done
-end
-
-def update_maropost_contact_with_auth0_id(contact_id, auth0_id)
-  maropost_client
-    .contacts
-    .update(
-      contact_id: contact_id,
-      params: {
-        contact: {
-          custom_field: {
-            auth0_id: auth0_id
-          }
-        }
-      }
-    )
 end
 
 desc "update maropost with auth0_id"
@@ -135,7 +120,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
 
             contact = maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
 
-            # # update_maropost_contact_with_auth0_id(contact["id"], auth0_id)
+            maropost_client.contacts.update(contact_id: contact["id"], params: { contact: { custom_field: { auth0_id: auth0_id } } })
             LOGGER.debug "updated #{email.munged}(#{contact['id']}) with auth0_id #{auth0_id}"
 
             dnm = maropost_client.global_unsubscribes.find_by_email(email: email)
@@ -176,35 +161,43 @@ task :update_maropost_with_auth0_id => [:dotenv] do
   end
 
   Channel.go {
-    not_found.each do |row|
-      begin
-        if row == false
-          not_found.close
-        else
-          not_found_sheet.append(row)
-          sleep 1 # rate limit
-          LOGGER.info "#{row[0].munged} added to google sheets not found"
-        end
-      rescue StandardError => ex
-        LOGGER.warn ex
-      end # begin
+    CSV.open("not_found.csv", "wb") do |csv|
+      csv << %w(email email_verified first_name last_name auth0_id)
+      not_found.each do |row|
+        begin
+          if row == false
+            not_found.close
+          else
+            csv << row
+            # not_found_sheet.append(row)
+            # sleep 1 # rate limit
+            LOGGER.debug "#{row[0].munged} added to google sheets not found"
+          end
+        rescue StandardError => ex
+          LOGGER.warn ex
+        end # begin
+      end
     end
     not_found_done << "not_found goroutine done!"
   }
 
   Channel.go {
-    users_in_dnm.each do |row|
-      begin
-        if row == false
-          users_in_dnm.close
-        else
-          users_in_dnm_sheet.append(row)
-          sleep 1 # rate limit
-          LOGGER.info "#{row[0].munged} added to google sheets do not mail"
-        end
-      rescue StandardError => ex
-        LOGGER.warn ex
-      end # begin
+    CSV.open("dnm.csv", "wb") do |csv|
+      csv << %w(email email_verified first_name last_name auth0_id maropost_id)
+      users_in_dnm.each do |row|
+        begin
+          if row == false
+            users_in_dnm.close
+          else
+            csv <<  row
+            # users_in_dnm_sheet.append(row)
+            # sleep 1 # rate limit
+            LOGGER.debug "#{row[0].munged} added to google sheets do not mail"
+          end
+        rescue StandardError => ex
+          LOGGER.warn ex
+        end # begin
+      end
     end
     users_in_dnm_done << "users_in_dnm goroutine done!"
   }
