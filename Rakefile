@@ -92,9 +92,9 @@ task :update_maropost_with_auth0_id => [:dotenv] do
     }
   end
 
-  maropost_client = MaropostApi::Client.new(
-    auth_token: ENV["AUTH_TOKEN"],
-    account_number: ENV["ACCOUNT_NUMBER"]
+  mvhq_maropost_client = MaropostApi::Client.new(
+    auth_token: ENV["MVHQ_AUTH_TOKEN"],
+    account_number: ENV["MVHQ_ACCOUNT_NUMBER"]
   )
 
   maropost_done = Channel.new(capacity: 1)
@@ -118,19 +118,19 @@ task :update_maropost_with_auth0_id => [:dotenv] do
             auth0_id = row[4]
             LOGGER.debug "#{email.munged} via maropost worker #{worker}"
 
-            contact = maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
+            contact = mvhq_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
 
-            maropost_client.contacts.update(contact_id: contact["id"], params: { contact: { custom_field: { auth0_id: auth0_id } } })
+            mvhq_maropost_client.contacts.update(contact_id: contact["id"], params: { contact: { custom_field: { auth0_id: auth0_id } } })
             LOGGER.debug "updated #{email.munged}(#{contact['id']}) with auth0_id #{auth0_id}"
 
-            dnm = maropost_client.global_unsubscribes.find_by_email(email: email)
+            dnm = mvhq_maropost_client.global_unsubscribes.find_by_email(email: email)
             if !dnm.has_key?("status")
               users_in_dnm << row.push(contact["id"])
               LOGGER.warn "#{email.munged} in dnm"
             end
 
           rescue MaropostApi::NotFound => ex
-            LOGGER.warn "#{email.munged} not found"
+            LOGGER.debug "#{email.munged} not found"
             not_found << row
 
           rescue StandardError => ex
@@ -141,14 +141,38 @@ task :update_maropost_with_auth0_id => [:dotenv] do
     }
   end
 
+  mvt_maropost_client = MaropostApi::Client.new(
+    auth_token: ENV["MVT_AUTH_TOKEN"],
+    account_number: ENV["MVT_ACCOUNT_NUMBER"]
+  )
+
+  mvr_maropost_client = MaropostApi::Client.new(
+    auth_token: ENV["MVR_AUTH_TOKEN"],
+    account_number: ENV["MVR_ACCOUNT_NUMBER"]
+  )
+
   Channel.go {
     CSV.open("not_found.csv", "wb") do |csv|
-      csv << %w(email email_verified first_name last_name auth0_id)
+      csv << %w(email email_verified first_name last_name auth0_id mvt_contact_id mvr_contact_id)
       not_found.each do |row|
         begin
           if row == false
             not_found.close
           else
+            # check the other lists
+            begin
+              email = row[0]
+
+              mvt_contact = mvt_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
+              row.push(mvt_contact["id"])
+
+              mvr_contact = mvr_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
+              row.push(mvr_contact["id"])
+            rescue MaropostApi::NotFound => ex
+              LOGGER.warn "#{email.munged} not found in mvt or mvr"
+            end
+
+            not_found << row
             csv << row
             LOGGER.debug "#{row[0].munged} added to google sheets not found"
           end
