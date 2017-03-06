@@ -165,9 +165,11 @@ task :update_maropost_with_auth0_id => [:dotenv] do
 
               mvt_contact = mvt_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
               row.push(mvt_contact["id"])
+              LOGGER.INFO "#{email} found in mvt"
 
               mvr_contact = mvr_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
-              row.push(mvr_contact["id"])
+              row.push("",mvr_contact["id"])
+              LOGGER.INFO "#{email} found in mvr"
             rescue MaropostApi::NotFound => ex
               LOGGER.warn "#{email.munged} not found in mvt or mvr"
             end
