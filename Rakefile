@@ -20,13 +20,14 @@ class String
   end
 end
 
+WORKER_COUNT = 16
+
 LOGGER = Logger.new(STDOUT)
 LOGGER.level = Logger::INFO
 Channel = Concurrent::Channel
 
 desc "write users to csv"
 task :write_users_to_csv => [:dotenv] do
-
   queue = Channel.new
   extractor = Extractor.new(queue, logger: LOGGER)
 
@@ -58,7 +59,6 @@ end
 
 desc "update maropost with auth0_id"
 task :update_maropost_with_auth0_id => [:dotenv] do
-  WORKER_COUNT = 16
   worker_pool = Channel.new(capacity: WORKER_COUNT)
 
   queue = Channel.new(capacity: WORKER_COUNT ** 2)
@@ -141,25 +141,6 @@ task :update_maropost_with_auth0_id => [:dotenv] do
     }
   end
 
-  CLIENT_ID = ENV["GOOGLE_CLIENT_ID"]; CLIENT_SECRET = ENV["GOOGLE_CLIENT_SECRET"]
-  authenticator = GSheets::Oauth::Offline.new(CLIENT_ID, CLIENT_SECRET)
-
-  REFRESH_TOKEN = ENV["REFRESH_TOKEN"]
-  access_token = authenticator.get_access_token(refresh_token: REFRESH_TOKEN)
-  session = GSheets::Session.new(access_token: access_token)
-
-  SHEET_ID = ENV["SHEET_ID"]
-  ss = GSheets::SpreadSheet.new(session: session, id: SHEET_ID)
-  not_found_sheet = ss.sheets[0]
-  users_in_dnm_sheet = ss.sheets[1]
-
-  Drive = Google::Apis::DriveV2
-  Drive::DriveService.new.tap do |client|
-    client.request_options.timeout_sec = 1200
-    client.request_options.open_timeout_sec = 1200
-    client.request_options.retries = 5
-  end
-
   Channel.go {
     CSV.open("not_found.csv", "wb") do |csv|
       csv << %w(email email_verified first_name last_name auth0_id)
@@ -169,8 +150,6 @@ task :update_maropost_with_auth0_id => [:dotenv] do
             not_found.close
           else
             csv << row
-            # not_found_sheet.append(row)
-            # sleep 1 # rate limit
             LOGGER.debug "#{row[0].munged} added to google sheets not found"
           end
         rescue StandardError => ex
@@ -190,8 +169,6 @@ task :update_maropost_with_auth0_id => [:dotenv] do
             users_in_dnm.close
           else
             csv <<  row
-            # users_in_dnm_sheet.append(row)
-            # sleep 1 # rate limit
             LOGGER.debug "#{row[0].munged} added to google sheets do not mail"
           end
         rescue StandardError => ex
