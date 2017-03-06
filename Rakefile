@@ -23,7 +23,7 @@ end
 WORKER_COUNT = 16
 
 LOGGER = Logger.new(STDOUT)
-LOGGER.level = Logger::INFO
+LOGGER.level = Logger::DEBUG
 Channel = Concurrent::Channel
 
 desc "write users to csv"
@@ -82,7 +82,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
             queue << false
             extractor_done << "extractor is done!"
           else
-            LOGGER.debug "processing page #{p} via auth0 worker #{worker}"
+            LOGGER.info "processing page #{p} via auth0 worker #{worker}"
             extractor.get_users_from_api(page: p)
           end
         rescue StandardError => ex
@@ -116,21 +116,21 @@ task :update_maropost_with_auth0_id => [:dotenv] do
           begin
             email = row[0]
             auth0_id = row[4]
-            LOGGER.debug "#{email.munged} via maropost worker #{worker}"
+            LOGGER.debug "#{email} via maropost worker #{worker}"
 
             contact = mvhq_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
 
             # mvhq_maropost_client.contacts.update(contact_id: contact["id"], params: { contact: { custom_field: { auth0_id: auth0_id } } })
-            LOGGER.debug "updated #{email.munged}(#{contact['id']}) with auth0_id #{auth0_id}"
+            LOGGER.info "updated #{email}(#{contact['id']}) with auth0_id #{auth0_id}"
 
             dnm = mvhq_maropost_client.global_unsubscribes.find_by_email(email: email)
             if !dnm.has_key?("status")
               users_in_dnm << row.push(contact["id"])
-              LOGGER.warn "#{email.munged} in dnm"
+              LOGGER.info "#{email} in dnm"
             end
 
           rescue MaropostApi::NotFound => ex
-            LOGGER.debug "#{email.munged} not found"
+            LOGGER.info "#{email} not found"
             not_found << row
 
           rescue StandardError => ex
@@ -159,24 +159,26 @@ task :update_maropost_with_auth0_id => [:dotenv] do
           if row == false
             not_found.close
           else
-            # check the other lists
-            begin
-              email = row[0]
 
+            email = row[0]
+            begin
+
+              # check the other lists
               mvt_contact = mvt_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
               row.push(mvt_contact["id"])
-              LOGGER.INFO "#{email} found in mvt"
+              LOGGER.info "#{email} found in mvt"
 
               mvr_contact = mvr_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
               row.push("",mvr_contact["id"])
-              LOGGER.INFO "#{email} found in mvr"
+              LOGGER.info "#{email} found in mvr"
+
             rescue MaropostApi::NotFound => ex
-              LOGGER.warn "#{email.munged} not found in mvt or mvr"
+              LOGGER.info "#{email} not found in mvt or mvr"
             end
 
-            not_found << row
             csv << row
-            LOGGER.debug "#{row[0].munged} added to google sheets not found"
+            csv.flush
+            LOGGER.info "#{email} added to google sheets not found"
           end
         rescue StandardError => ex
           LOGGER.warn ex
@@ -194,8 +196,9 @@ task :update_maropost_with_auth0_id => [:dotenv] do
           if row == false
             users_in_dnm.close
           else
-            csv <<  row
-            LOGGER.debug "#{row[0].munged} added to google sheets do not mail"
+            csv << row
+            csv.flush
+            LOGGER.info "#{row[0]} added to google sheets do not mail"
           end
         rescue StandardError => ex
           LOGGER.warn ex
