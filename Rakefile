@@ -112,6 +112,9 @@ task :update_maropost_with_auth0_id => [:dotenv] do
       queue.each do |row|
         if row == false
           maropost_done << "reached the end of the queue!"
+          not_found << false
+          users_in_dnm << false
+          queue.close
         else
           begin
             email = row[0]
