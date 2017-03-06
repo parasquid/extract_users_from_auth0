@@ -120,7 +120,7 @@ task :update_maropost_with_auth0_id => [:dotenv] do
 
             contact = mvhq_maropost_client.contacts.find_by_email(email: email) # triggers the not found exception
 
-            mvhq_maropost_client.contacts.update(contact_id: contact["id"], params: { contact: { custom_field: { auth0_id: auth0_id } } })
+            # mvhq_maropost_client.contacts.update(contact_id: contact["id"], params: { contact: { custom_field: { auth0_id: auth0_id } } })
             LOGGER.debug "updated #{email.munged}(#{contact['id']}) with auth0_id #{auth0_id}"
 
             dnm = mvhq_maropost_client.global_unsubscribes.find_by_email(email: email)
