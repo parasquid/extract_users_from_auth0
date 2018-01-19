@@ -3,14 +3,15 @@ class SimpleExtractor
   attr_reader :total_records
   attr_reader :total_pages
 
-  def initialize(logger: Logger.new(STDOUT))
+  def initialize(q: nil, logger: Logger.new(STDOUT))
     @logger = logger
 
     @auth0 = init_auth0_client
     @total_records = @auth0.get_users(
       per_page: 1,
       sort: "created_at:1",
-      include_totals: true
+      include_totals: true,
+      q: q
     )["total"]
 
     @total_pages = (@total_records / PER_PAGE).floor

@@ -27,7 +27,41 @@ LOGGER = Logger.new(STDOUT)
 LOGGER.level = Logger::DEBUG
 Channel = Concurrent::Channel
 
+class Date
+  def upto(end_date)
+    date = self
+    while date <= end_date
+      yield date
+      date = date >> 1
+    end
+  end
+end
+
 desc "write users to csv (simple)"
+task :write_users_to_csv_simple => [:dotenv] do
+
+  Date.new(2010).upto(Date.today) do |date|
+    day_first = Date.new(date.year, date.month, 1)
+    day_last = Date.new(date.year, date.month, -1)
+    extractor = SimpleExtractor.new(q: "created_at:[#{day_first} TO #{day_last}]", logger: LOGGER)
+    LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} of #{extractor.per_page} pages for #{date}"
+
+    LOGGER.debug "opening the csv for writing"
+    CSV.open("accounts.csv", "wb") do |csv|
+      csv << ["email", "email_verified", "given_name", "family_name"]
+
+      extractor.total_pages.times do |page|
+        rows = extractor.get_users_from_api(page: page)
+        rows.each { |row| csv << row }
+        LOGGER.debug "#{page} of #{extractor.total_pages} processed"
+      end
+    end
+  end
+  LOGGER.debug "all done!"
+
+end
+
+desc "write users to csv (parallel)"
 task :write_users_to_csv_simple => [:dotenv] do
   extractor = SimpleExtractor.new(logger: LOGGER)
   LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} of #{extractor.per_page} pages"
