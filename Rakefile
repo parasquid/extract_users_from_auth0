@@ -40,7 +40,7 @@ class Date
   end
 end
 
-desc "write users to csv (simple)"
+desc "write users to csv (parallel)"
 task :write_users_to_csv_simple => [:dotenv] do
 
   Parallel.each(Date.new(2015).month_by_month_upto(Date.today)) do |date|
@@ -59,25 +59,6 @@ task :write_users_to_csv_simple => [:dotenv] do
         rows.each { |row| csv << row }
         LOGGER.debug "#{page} of #{extractor.total_pages} processed"
       end
-    end
-  end
-  LOGGER.debug "all done!"
-
-end
-
-desc "write users to csv (parallel)"
-task :write_users_to_csv_simple => [:dotenv] do
-  extractor = SimpleExtractor.new(logger: LOGGER)
-  LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} of #{extractor.per_page} pages"
-
-  LOGGER.debug "opening the csv for writing"
-  CSV.open("accounts.csv", "wb") do |csv|
-    csv << ["email", "email_verified", "given_name", "family_name"]
-
-    extractor.total_pages.times do |page|
-      rows = extractor.get_users_from_api(page: page)
-      rows.each { |row| csv << row }
-      LOGGER.debug "#{page} of #{extractor.total_pages} processed"
     end
   end
   LOGGER.debug "all done!"
