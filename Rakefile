@@ -14,6 +14,7 @@ require "g_sheets"
 require "google/apis/drive_v2"
 require_relative "extractor"
 require_relative "simple_extractor"
+require "parallel"
 
 class String
   def munged
@@ -42,14 +43,15 @@ end
 desc "write users to csv (simple)"
 task :write_users_to_csv_simple => [:dotenv] do
 
-  Date.new(2015).month_by_month_upto(Date.today).each do |date|
+  Parallel.each(Date.new(2015).month_by_month_upto(Date.today)) do |date|
     day_first = Date.new(date.year, date.month, 1)
     day_last = Date.new(date.year, date.month, -1)
-    extractor = SimpleExtractor.new(q: "created_at:[#{day_first} TO #{day_last}]", logger: LOGGER)
-    LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} pages with #{extractor.per_page} per page for #{day_first} until #{day_last}"
+    range_to_s = "#{day_first} TO #{day_last}"
+    extractor = SimpleExtractor.new(q: "created_at:[#{range_to_s}]", logger: LOGGER)
+    LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} pages with #{extractor.per_page} per page for #{range_to_s}"
     next if extractor.total_records == 0
     LOGGER.debug "opening the csv for writing"
-    CSV.open("accounts.csv", "wb") do |csv|
+    CSV.open("accounts-#{range_to_s}.csv", "wb") do |csv|
       csv << ["email", "email_verified", "given_name", "family_name"]
 
       extractor.total_pages.times do |page|

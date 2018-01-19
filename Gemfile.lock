@@ -64,6 +64,7 @@ GEM
     netrc (0.11.0)
     nori (2.6.0)
     os (0.9.6)
+    parallel (1.12.1)
     pry (0.10.4)
       coderay (~> 1.1.0)
       method_source (~> 0.8.1)
@@ -104,6 +105,7 @@ DEPENDENCIES
   jwt
   maropost_api
   naught
+  parallel
   pry
   rails-assets-fontawesome (~> 4.3.0)!
   rails-assets-tether (>= 1.1.0)!
@@ -112,4 +114,4 @@ RUBY VERSION
    ruby 2.3.3p222
 
 BUNDLED WITH
-   1.14.5
+   1.16.1
