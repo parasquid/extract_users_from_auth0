@@ -45,7 +45,7 @@ task :write_users_to_csv_simple => [:dotenv] do
     day_last = Date.new(date.year, date.month, -1)
     extractor = SimpleExtractor.new(q: "created_at:[#{day_first} TO #{day_last}]", logger: LOGGER)
     LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} of #{extractor.per_page} pages for #{date}"
-
+    next if extractor.total_records == 0
     LOGGER.debug "opening the csv for writing"
     CSV.open("accounts.csv", "wb") do |csv|
       csv << ["email", "email_verified", "given_name", "family_name"]
