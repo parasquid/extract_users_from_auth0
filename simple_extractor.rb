@@ -14,7 +14,7 @@ class SimpleExtractor
       q: q
     )["total"]
 
-    @total_pages = (@total_records / PER_PAGE).floor
+    @total_pages = (@total_records / PER_PAGE).floor + 1
   end
 
   # get users from the API and push it to the queue
