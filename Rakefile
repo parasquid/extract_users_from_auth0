@@ -63,7 +63,7 @@ task :write_users_to_csv_simple => [:dotenv] do
     next if extractor.total_records == 0
     LOGGER.debug "opening the csv for writing"
     CSV.open("accounts-#{range_to_s}.csv", "wb") do |csv|
-      csv << ["email", "email_verified", "given_name", "family_name"]
+      csv << extractor.headers
 
       extractor.total_pages.times do |page|
         rows = extractor.get_users_from_api(page: page)

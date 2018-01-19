@@ -39,6 +39,10 @@ class SimpleExtractor
     PER_PAGE
   end
 
+  def headers
+    ["email", "email_verified", "given_name", "family_name", "created_at", "last_login", "logins_count", "user_id"]
+  end
+
   private
 
   def json_to_array(users)
@@ -53,6 +57,9 @@ class SimpleExtractor
           user["email_verified"],
           user["given_name"],
           user["family_name"],
+          user["created_at"],
+          user["last_login"],
+          user["logins_count"],
           (ident["user_id"] if ident)
         ]
         queue << row
