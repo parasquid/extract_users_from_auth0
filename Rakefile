@@ -13,6 +13,7 @@ require "maropost_api"
 require "g_sheets"
 require "google/apis/drive_v2"
 require_relative "extractor"
+require_relative "simple_extractor"
 
 class String
   def munged
@@ -25,6 +26,25 @@ WORKER_COUNT = 16
 LOGGER = Logger.new(STDOUT)
 LOGGER.level = Logger::DEBUG
 Channel = Concurrent::Channel
+
+desc "write users to csv (simple)"
+task :write_users_to_csv_simple => [:dotenv] do
+  extractor = SimpleExtractor.new(logger: LOGGER)
+  LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} of #{extractor.per_page} pages"
+
+  LOGGER.debug "opening the csv for writing"
+  CSV.open("accounts.csv", "wb") do |csv|
+    csv << ["email", "email_verified", "given_name", "family_name"]
+
+    extractor.total_pages.times do |page|
+      rows = extractor.get_users_from_api(page: page)
+      rows.each { |row| csv << row }
+      LOGGER.debug "#{page} of #{extractor.total_pages} processed"
+    end
+  end
+  LOGGER.debug "all done!"
+
+end
 
 desc "write users to csv"
 task :write_users_to_csv => [:dotenv] do
