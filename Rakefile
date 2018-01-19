@@ -40,11 +40,11 @@ end
 desc "write users to csv (simple)"
 task :write_users_to_csv_simple => [:dotenv] do
 
-  Date.new(2010).upto(Date.today) do |date|
+  Date.new(2013).upto(Date.today) do |date|
     day_first = Date.new(date.year, date.month, 1)
     day_last = Date.new(date.year, date.month, -1)
     extractor = SimpleExtractor.new(q: "created_at:[#{day_first} TO #{day_last}]", logger: LOGGER)
-    LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} pages with #{extractor.per_page} per page for #{date}"
+    LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} pages with #{extractor.per_page} per page for #{day_first} until #{day_last}"
     next if extractor.total_records == 0
     LOGGER.debug "opening the csv for writing"
     CSV.open("accounts.csv", "wb") do |csv|
