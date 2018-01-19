@@ -18,14 +18,15 @@ class SimpleExtractor
   end
 
   # get users from the API and push it to the queue
-  def get_users_from_api(page: 0)
-    LOGGER.info "extractor processing page #{page + 1} of #{@total_pages}"
+  def get_users_from_api(page: 0, q: nil)
+    LOGGER.info "extractor processing page #{page} of #{@total_pages}"
     begin
       users = @auth0.get_users(
         per_page: @total_records < PER_PAGE ? @total_records : PER_PAGE,
         page: page,
         sort: "created_at:1",
-        include_totals: true
+        include_totals: true,
+        q: q
       )["users"]
 
       json_to_array(users)

@@ -28,11 +28,13 @@ LOGGER.level = Logger::DEBUG
 Channel = Concurrent::Channel
 
 class Date
-  def upto(end_date)
+  def month_by_month_upto(end_date)
     date = self
-    while date <= end_date
-      yield date
-      date = date >> 1
+    Enumerator.new do |y|
+      while date <= end_date
+        y << date
+        date = date >> 1
+      end
     end
   end
 end
@@ -40,7 +42,7 @@ end
 desc "write users to csv (simple)"
 task :write_users_to_csv_simple => [:dotenv] do
 
-  Date.new(2013).upto(Date.today) do |date|
+  Date.new(2015).month_by_month_upto(Date.today).each do |date|
     day_first = Date.new(date.year, date.month, 1)
     day_last = Date.new(date.year, date.month, -1)
     extractor = SimpleExtractor.new(q: "created_at:[#{day_first} TO #{day_last}]", logger: LOGGER)
