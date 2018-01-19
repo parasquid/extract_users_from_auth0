@@ -24,7 +24,10 @@ gem "auth0"
 gem "concurrent-ruby"
 gem "concurrent-ruby-edge"
 gem "parallel"
+gem "activesupport"
+
 gem "jwt"
+
 
 gem "maropost_api"
 gem "g_sheets"

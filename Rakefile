@@ -15,6 +15,7 @@ require "google/apis/drive_v2"
 require_relative "extractor"
 require_relative "simple_extractor"
 require "parallel"
+require "active_support/all"
 
 class String
   def munged
@@ -38,14 +39,24 @@ class Date
       end
     end
   end
+
+  def week_by_week_upto(end_date)
+    date = self
+    Enumerator.new do |y|
+      while date <= end_date
+        y << date
+        date = date + 1.week
+      end
+    end
+  end
 end
 
 desc "write users to csv (parallel)"
 task :write_users_to_csv_simple => [:dotenv] do
 
-  Parallel.each(Date.new(2015).month_by_month_upto(Date.today)) do |date|
-    day_first = Date.new(date.year, date.month, 1)
-    day_last = Date.new(date.year, date.month, -1)
+  Parallel.each_with_index(Date.new(2015).week_by_week_upto(Date.today)) do |date, index|
+    day_first = date
+    day_last = date + 1.week - 1.day
     range_to_s = "#{day_first} TO #{day_last}"
     extractor = SimpleExtractor.new(q: "created_at:[#{range_to_s}]", logger: LOGGER)
     LOGGER.debug "total records: #{extractor.total_records} in #{extractor.total_pages} pages with #{extractor.per_page} per page for #{range_to_s}"
@@ -57,7 +68,7 @@ task :write_users_to_csv_simple => [:dotenv] do
       extractor.total_pages.times do |page|
         rows = extractor.get_users_from_api(page: page)
         rows.each { |row| csv << row }
-        LOGGER.debug "#{page} of #{extractor.total_pages} processed"
+        LOGGER.debug "#{page} of #{extractor.total_pages} processed (worker #{Parallel.worker_number})"
       end
     end
   end
