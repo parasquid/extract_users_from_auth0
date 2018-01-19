@@ -14,11 +14,12 @@ class SimpleExtractor
       q: q
     )["total"]
 
+    @q = q
     @total_pages = (@total_records / PER_PAGE).floor + 1
   end
 
   # get users from the API and push it to the queue
-  def get_users_from_api(page: 0, q: nil)
+  def get_users_from_api(page: 0, q: @q)
     LOGGER.info "extractor processing page #{page} of #{@total_pages}"
     begin
       users = @auth0.get_users(
@@ -60,7 +61,7 @@ class SimpleExtractor
           user["created_at"],
           user["last_login"],
           user["logins_count"],
-          (ident["user_id"] if ident)
+          (ident ? ident["user_id"] : "NO AUTH ID")
         ]
         queue << row
       rescue StandardError => ex

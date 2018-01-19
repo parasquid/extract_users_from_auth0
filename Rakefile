@@ -68,7 +68,7 @@ task :write_users_to_csv_simple => [:dotenv] do
       extractor.total_pages.times do |page|
         rows = extractor.get_users_from_api(page: page)
         rows.each { |row| csv << row }
-        LOGGER.debug "#{page} of #{extractor.total_pages} processed (worker #{Parallel.worker_number})"
+        LOGGER.debug "#{page} of #{extractor.total_pages} processed (worker #{Parallel.worker_number}) #{range_to_s}"
       end
     end
   end
